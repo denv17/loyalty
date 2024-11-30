@@ -1,0 +1,25 @@
+---
+import type { HTMLAttributes } from 'astro/types'
+
+interface Props extends HTMLAttributes<'button'> {
+  text: string
+  variant?: 'primary' | 'secondary'
+}
+
+const { text, variant = 'primary', ...props } = Astro.props as Props
+
+const variantClasses = {
+  primary: 'bg-black hover:bg-white text-white hover:text-black',
+  secondary: 'bg-white hover:bg-black text-black hover:text-white',
+}[variant]
+---
+
+<button
+  class:list={[
+    'w-full px-5 py-3  font-normal border border-black rounded-lg transition duration-300',
+    variantClasses,
+  ]}
+  {...props}
+>
+  {text && <span>{text}</span>}
+</button>

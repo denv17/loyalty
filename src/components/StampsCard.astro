@@ -1,0 +1,75 @@
+---
+import Card from '@/components/Card.astro'
+import Button from '@/components/Button.astro'
+---
+
+<Card>
+  <h2 class="text-2xl font-semibold mb-6" data-username>Hola</h2>
+  <p data-stamps class="text-lg font-medium mb-4">Sellos obtenidos: 0</p>
+
+  <div class="flex justify-center gap-4">
+    <Button text="Solicitar sello" data-request-stamp />
+  </div>
+</Card>
+
+<script>
+  import { auth, db } from '@/firebase-config'
+  import { onAuthStateChanged } from 'firebase/auth'
+  import {
+    doc,
+    collection,
+    addDoc,
+    onSnapshot,
+    serverTimestamp,
+  } from 'firebase/firestore'
+
+  const usernameHeading = document.querySelector(
+    '[data-username]'
+  ) as HTMLHeadingElement
+  const stampsParagraph = document.querySelector(
+    '[data-stamps]'
+  ) as HTMLParagraphElement
+  const requestButton = document.querySelector(
+    '[data-request-stamp]'
+  ) as HTMLButtonElement
+
+  const setupUserStampsListener = (userId: string) => {
+    const userRef = doc(db, 'users', userId)
+
+    onSnapshot(userRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const userData = docSnap.data()
+        const userName = userData.name || 'Usuario'
+        const userStamps = userData.stamps || 0
+
+        usernameHeading.textContent = `Hola, ${userName}`
+        stampsParagraph.textContent = `Sellos obtenidos: ${userStamps}`
+      } else {
+        console.log('No se encontraron datos del usuario.')
+      }
+    })
+  }
+
+  const requestStamp = async (userId: string) => {
+    try {
+      const stampRequestRef = collection(db, 'stamp_requests')
+      await addDoc(stampRequestRef, {
+        userId: userId,
+        status: 'pendiente',
+        timestamp: serverTimestamp(),
+      })
+      alert('Solicitud de sello enviada')
+    } catch (error) {
+      console.error('Error al solicitar el sello:', error)
+    }
+  }
+
+  onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      window.location.href = '/'
+    } else {
+      setupUserStampsListener(user.uid)
+      requestButton.addEventListener('click', () => requestStamp(user.uid))
+    }
+  })
+</script>

@@ -1,0 +1,119 @@
+---
+import Input from '@/components/Input.astro'
+import Button from '@/components/Button.astro'
+import FormContainer from './FormContainer.astro'
+---
+
+<FormContainer
+  title="Iniciar sesión"
+  message="¿No tienes una cuenta? <a href='/register' class='font-normal hover:underline underline-offset-2'>Regístrate</a>"
+>
+  <form class="flex flex-col gap-5" data-login-form>
+    <Input
+      id="email"
+      type="email"
+      name="email"
+      label="Correo electrónico:"
+      placeholder="Ingresa tu correo electrónico"
+      required
+    />
+
+    <Input
+      id="password"
+      type="password"
+      name="password"
+      label="Contraseña:"
+      placeholder="Ingresa tu contraseña"
+      required
+    />
+
+    <Button type="submit" text="Ingresar" />
+  </form>
+</FormContainer>
+
+<script>
+  import { auth, db } from '@/firebase-config'
+  import { onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth'
+  import { doc, getDoc, type DocumentData } from 'firebase/firestore'
+
+  const form = document.querySelector('[data-login-form]') as HTMLFormElement
+  const submitButton = form.querySelector(
+    'button[type="submit"]'
+  ) as HTMLButtonElement
+  const errorSpan = document.querySelector('[data-error]') as HTMLSpanElement
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault()
+
+    submitButton.disabled = true
+    submitButton.textContent = 'Ingresando...'
+
+    const formData = new FormData(form)
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
+
+    try {
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      )
+      const user = userCredential.user
+
+      const userRef = doc(db, 'users', user.uid)
+      const userDoc = await getDoc(userRef)
+
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as DocumentData
+        if (userData.role === 'admin') {
+          location.href = '/admin'
+        } else {
+          location.href = '/stamps'
+        }
+
+        form.reset()
+      } else {
+        errorSpan.classList.remove('hidden')
+        errorSpan.textContent = 'El documento de usuario no existe.'
+      }
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error('Error al iniciar sesión:', error.message)
+        errorSpan.classList.remove('hidden')
+        errorSpan.textContent =
+          'Error al iniciar sesión. Verifica tus credenciales.'
+      } else {
+        console.error('Error desconocido:', error)
+        errorSpan.classList.remove('hidden')
+        errorSpan.textContent =
+          'Ocurrió un error inesperado. Inténtalo de nuevo.'
+      }
+    } finally {
+      submitButton.disabled = false
+      submitButton.textContent = 'Ingresar'
+    }
+  })
+
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      try {
+        const userRef = doc(db, 'users', user.uid)
+        const userDoc = await getDoc(userRef)
+
+        if (userDoc.exists()) {
+          const userData = userDoc.data() as DocumentData
+
+          if (userData.role === 'admin') {
+            location.href = '/admin'
+          } else {
+            location.href = '/stamps'
+          }
+        } else {
+          console.error('El documento del usuario no existe en Firestore.')
+        }
+      } catch (error) {
+        console.error('Error al obtener los datos del usuario:', error)
+      }
+    }
+  })
+</script>

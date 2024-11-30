@@ -1,0 +1,134 @@
+---
+import Input from '@/components/Input.astro'
+import Button from '@/components/Button.astro'
+import FormContainer from './FormContainer.astro'
+---
+
+<FormContainer
+  title="Registrarse"
+  message="¿Ya tienes una cuenta? <a href='/' class='font-normal hover:underline underline-offset-2'>Inicia sesión</a>"
+>
+  <form class="flex flex-col gap-5" data-register-form>
+    <Input
+      id="name"
+      type="text"
+      name="name"
+      label="Nombres:"
+      placeholder="Ingresa tu completo"
+      required
+    />
+
+    <Input
+      id="phone"
+      type="tel"
+      name="phone"
+      label="Celular:"
+      placeholder="Ingresa tu número de celular"
+      pattern="[0-9]{9}"
+      required
+    />
+
+    <Input
+      id="email"
+      type="email"
+      name="email"
+      label="Correo electrónico:"
+      placeholder="Ingresa tu correo electrónico"
+      required
+    />
+
+    <Input
+      id="password"
+      type="password"
+      name="password"
+      label="Contraseña:"
+      placeholder="Ingresa tu contraseña"
+      required
+    />
+
+    <Button type="submit" text="Registrarse" />
+  </form>
+</FormContainer>
+
+<script>
+  import { auth, db } from '@/firebase-config'
+  import {
+    onAuthStateChanged,
+    createUserWithEmailAndPassword,
+  } from 'firebase/auth'
+  import { doc, getDoc, setDoc, type DocumentData } from 'firebase/firestore'
+
+  const form = document.querySelector('[data-register-form]') as HTMLFormElement
+  const errorSpan = document.querySelector('[data-error]') as HTMLSpanElement
+  const submitButton = form.querySelector(
+    'button[type="submit"]'
+  ) as HTMLButtonElement
+
+  form.addEventListener('submit', async (event: Event) => {
+    event.preventDefault()
+
+    submitButton.disabled = true
+    submitButton.textContent = 'Registrando...'
+
+    const formData = new FormData(form)
+    const name = formData.get('name') as string
+    const phone = formData.get('phone') as string
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
+
+    try {
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      )
+      const userId = userCredential.user.uid
+
+      await setDoc(doc(db, 'users', userId), {
+        name,
+        phone,
+        email,
+        stamps: 0,
+      })
+
+      location.href = '/stamps'
+    } catch (error: unknown) {
+      errorSpan.classList.remove('hidden')
+
+      if ((error as { code: string }).code === 'auth/email-already-in-use') {
+        errorSpan.textContent = 'El correo electrónico ya está registrado.'
+      } else {
+        errorSpan.textContent =
+          'Error al registrar usuario. Inténtalo de nuevo.'
+      }
+
+      console.error('Error al registrar usuario:', error)
+    } finally {
+      submitButton.disabled = false
+      submitButton.textContent = 'Registrarse'
+    }
+  })
+
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      try {
+        const userRef = doc(db, 'users', user.uid)
+        const userDoc = await getDoc(userRef)
+
+        if (userDoc.exists()) {
+          const userData = userDoc.data() as DocumentData
+
+          if (userData.role === 'admin') {
+            location.href = '/admin'
+          } else {
+            location.href = '/stamps'
+          }
+        } else {
+          console.error('El documento del usuario no existe en Firestore.')
+        }
+      } catch (error) {
+        console.error('Error al obtener los datos del usuario:', error)
+      }
+    }
+  })
+</script>

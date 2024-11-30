@@ -1,0 +1,15 @@
+---
+import Card from '@/components/Card.astro'
+
+const { title, message } = Astro.props
+---
+
+<Card>
+  {title && <h2 class="text-3xl font-serif">{title}</h2>}
+
+  <slot />
+
+  <span data-error class="hidden text-error"></span>
+
+  {message && <p set:html={message} />}
+</Card>

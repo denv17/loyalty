@@ -1,0 +1,190 @@
+<div class="max-w-md mx-auto flex flex-col gap-5">
+  <h2
+    class="text-2xl font-semibold mb-4 text-center hidden"
+    data-stamp-requests-title
+  >
+    Solicitudes de Sellos
+  </h2>
+  <ul
+    class="bg-white shadow-md rounded-md divide-y divide-gray-200 px-4 hidden"
+    data-stamp-requests
+  >
+  </ul>
+
+  <h2 class="text-2xl font-semibold mt-10 mb-4 text-center">
+    Listado de Usuarios
+  </h2>
+  <table class="w-full bg-white shadow-md rounded-md">
+    <thead>
+      <tr class="bg-gray-200 text-gray-700">
+        <th class="py-2 px-4">Nombre</th>
+        <th class="py-2 px-4">Email</th>
+        <th class="py-2 px-4">Celular</th>
+        <th class="py-2 px-4">Sellos</th>
+      </tr>
+    </thead>
+    <tbody data-user-list></tbody>
+  </table>
+</div>
+
+<script>
+  import { db, auth } from '@/firebase-config'
+  import {
+    collection,
+    query,
+    onSnapshot,
+    doc,
+    updateDoc,
+    where,
+    increment,
+    setDoc,
+    getDoc,
+    type DocumentData,
+  } from 'firebase/firestore'
+  import { onAuthStateChanged, type User } from 'firebase/auth'
+
+  const stampRequestsList = document.querySelector(
+    '[data-stamp-requests]'
+  ) as HTMLUListElement
+  const stampRequestsTitle = document.querySelector(
+    '[data-stamp-requests-title]'
+  ) as HTMLHeadingElement
+  const userListTable = document.querySelector(
+    '[data-user-list]'
+  ) as HTMLTableSectionElement
+
+  const checkAdminRole = async (userId: string): Promise<void> => {
+    const userRef = doc(db, 'users', userId)
+    const userDoc = await getDoc(userRef)
+
+    if (userDoc.exists() && userDoc.data().role === 'admin') {
+      fetchStampRequests()
+      fetchUsers()
+    } else {
+      window.location.href = '/stamps'
+    }
+  }
+
+  onAuthStateChanged(auth, (user: User | null) => {
+    if (user) {
+      checkAdminRole(user.uid)
+    } else {
+      window.location.href = '/'
+    }
+  })
+
+  const fetchStampRequests = (): void => {
+    const q = query(
+      collection(db, 'stamp_requests'),
+      where('status', '==', 'pendiente')
+    )
+
+    onSnapshot(q, (snapshot) => {
+      if (snapshot.empty) {
+        stampRequestsTitle.classList.add('hidden')
+        stampRequestsList.classList.add('hidden')
+      } else {
+        stampRequestsTitle.classList.remove('hidden')
+        stampRequestsList.classList.remove('hidden')
+      }
+
+      stampRequestsList.innerHTML = ''
+      snapshot.forEach(async (docSnapshot) => {
+        const data = docSnapshot.data()
+        const userName = await getUserName(data.userId)
+
+        const requestItem = document.createElement('li')
+        requestItem.className = 'py-4 flex flex-col space-y-2'
+        requestItem.innerHTML = `
+          <p class="text-gray-700">De: <span class="font-semibold">${userName}</span></p>
+          <p class="text-gray-500 text-sm">Fecha de solicitud: ${data.timestamp?.toDate().toLocaleDateString()}</p>
+        `
+
+        const approveButton = document.createElement('button')
+        approveButton.textContent = 'Aprobar'
+        approveButton.className =
+          'bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded'
+        approveButton.addEventListener('click', () =>
+          approveStamp(docSnapshot.id, data.userId)
+        )
+
+        const rejectButton = document.createElement('button')
+        rejectButton.textContent = 'Rechazar'
+        rejectButton.className =
+          'bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded'
+        rejectButton.addEventListener('click', () =>
+          rejectStamp(docSnapshot.id)
+        )
+
+        const buttonContainer = document.createElement('div')
+        buttonContainer.className = 'flex space-x-4'
+        buttonContainer.appendChild(approveButton)
+        buttonContainer.appendChild(rejectButton)
+        requestItem.appendChild(buttonContainer)
+
+        stampRequestsList.appendChild(requestItem)
+      })
+    })
+  }
+
+  const getUserName = async (userId: string): Promise<string> => {
+    const userRef = doc(db, 'users', userId)
+    const userDoc = await getDoc(userRef)
+    return userDoc.exists()
+      ? userDoc.data()?.name || 'Usuario Desconocido'
+      : 'Usuario Desconocido'
+  }
+
+  const approveStamp = async (
+    requestId: string,
+    userId: string
+  ): Promise<void> => {
+    const requestRef = doc(db, 'stamp_requests', requestId)
+    const userRef = doc(db, 'users', userId)
+
+    try {
+      await updateDoc(requestRef, { status: 'approved' })
+
+      const userDoc = await getDoc(userRef)
+      if (!userDoc.exists()) {
+        await setDoc(userRef, { stamps: 1 })
+        console.log(
+          `Documento de usuario creado y sello añadido para el usuario con ID: ${userId}`
+        )
+      } else {
+        await updateDoc(userRef, { stamps: increment(1) })
+        console.log(`Sello añadido a usuario existente con ID: ${userId}`)
+      }
+    } catch (error) {
+      console.error('Error al aprobar el sello:', error)
+    }
+  }
+
+  const rejectStamp = async (requestId: string): Promise<void> => {
+    const requestRef = doc(db, 'stamp_requests', requestId)
+    await updateDoc(requestRef, { status: 'rejected' })
+    console.log(`Solicitud con ID: ${requestId} ha sido rechazada`)
+  }
+
+  const fetchUsers = (): void => {
+    const usersQuery = query(collection(db, 'users'))
+
+    onSnapshot(usersQuery, (snapshot) => {
+      userListTable.innerHTML = ''
+      snapshot.forEach((userDoc) => {
+        const userData = userDoc.data() as DocumentData
+        const userRow = document.createElement('tr')
+        userRow.className = 'border-b'
+
+        userRow.innerHTML = `
+          <td class="py-2 px-4">${userData.name || 'Sin nombre'}</td>
+          <td class="py-2 px-4">${userData.email || 'Sin email'}</td>
+          <td class="py-2 px-4">${userData.phone || 'Sin celular'}</td>
+          <td class="py-2 px-4 text-center">${userData.stamps || 0}</td>
+        `
+
+        userListTable.appendChild(userRow)
+      })
+    })
+  }
+</script>
